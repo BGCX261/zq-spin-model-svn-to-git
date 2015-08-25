@@ -1,0 +1,102 @@
+#summary Utility for calculating statistical properties of a time series
+#labels Phase-Implementation
+
+= Properties =
+
+{{{AnalyzeTimeSeries(...)}}} is a function.
+
+_Arguments_
+ # {{{time_series_measurements* tsm}}}
+                
+_Return type_   : {{{void}}}
+
+_Location_      : {{{/analysis.c}}}
+
+= Description =
+
+{{{AnalyzeTimeSeries(...)}}} takes a real one dimensional array and calculates the following statistical properties:
+  # mean (1st raw moment)
+  # variance (2nd central moment)
+  # skewness (3rd central moment)
+  # kurtosis (4th central moment)
+  # disconnected autocorrelation function 
+
+The time series data and its length has to be fed to the function through a predefined structure of type {{{time_series_measurements}}}.
+{{{
+double data[1000]; /* contains time series of length 1000 */
+time_series_measurements tsm;
+tsm.o     = data;
+tsm.ndata = 1000;
+}}}
+
+ * If the four moments are to be calculated, set the following field :
+{{{
+tsm.measure_moments = 'y';
+}}} 
+ This instructs the function to calculate and store:
+   * mean in {{{tsm.mean}}}
+   * variance in {{{tsm.variance}}}
+   * skewness in {{{tsm.skewness}}}
+   * kurtosis in {{{tsm.kurtosis}}}
+
+ * If the disconnected autocorrelation function is to be calculated, set the following fields :
+{{{
+double corr[1000]; /* allocate space to store the correlation function */
+tsm.measure_correlation = 'y';
+tsm.c = corr;
+}}}
+ This will instruct the function to calculate and store: 
+   * mean in {{{tsm.mean}}}
+   * disconnected autocorrelation function in {{{tsm.c}}}
+
+The disconnected autocorrelation function can be computed using either of the two following method:
+ * direct method 
+ * Fourier transform method. The Fourier method has been implemented using two different FFT libraries:
+  * [http://www.fftw.org/fftw3_doc/Complex-One_002dDimensional-DFTs.html#Complex-One_002dDimensional-DFTsFFTW3 FFTW]: To use FFTW, include the header file {{{fftw3.h}}} in {{{/analysis.h}}} and compile the code with {{{-lfftw3}}} flag.
+  * [http://www.gnu.org/software/gsl/manual/html_node/Overview-of-complex-data-FFTs.html#Overview-of-complex-data-FFTs GSL_FFT]: To use GSL_FFT, include the header files {{{gsl/gsl_errno.h}}} and {{{gsl/gsl_fft_complex.h}}} in {{{/analysis.h}}} and compile the code with {{{-lgsl -lgslcblas}}} flag.  
+  * If none of the FFT header files are included in {{{/analysis.h}}}, the function will use the direct method.
+
+= Example =
+
+{{{
+/*  
+    statistical properties of a random walker 
+    compilation : gcc -std=c99 foo.c measure.c
+*/
+
+#include "analysis.h"
+
+#define STEPS           ((int)1e5)
+#define STEPSIZE        (1e-2)
+#define RANDSTEP        (STEPSIZE * (2 * (rand() > RAND_MAX / 2) - 1))
+
+int main()
+{
+    omp_set_num_threads(4);
+    double* data    = (double*)malloc(sizeof(double) * STEPS);
+    double* c       = (double*)malloc(sizeof(double) * STEPS);    
+    srand(123456789);
+    
+    /* fill time series */
+    data[0] = 0.0; /* start at origin */
+    for (int i = 1; i < STEPS; i++) {
+        data[i] = data[i - 1] + RANDSTEP;
+    }
+    
+    /* calculate autocorrelation function */
+    time_series_measurements tsm;
+    tsm.o                   = data;
+    tsm.ndata               = STEPS;
+    tsm.measure_correlation = 'y';
+    tsm.c                   = c;
+    AnalyzeTimeSeries(&tsm);
+    
+    /* print autocorrelation function */
+    for (int i = 0; i < STEPS; i++) {
+        fprintf(stdout, "%e\n", tsm.c[i]);
+    }
+    
+    free(data);
+    free(c);
+}
+}}}
